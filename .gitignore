@@ -1,0 +1,10 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+# Build outputs
+/Build/
+/ObjectFiles/
+*.o
+*.dll
+*.obj
+*.exe
