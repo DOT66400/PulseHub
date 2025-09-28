@@ -7,6 +7,26 @@
 #include "imgui-node/imgui_node_editor.h"
 #include "imgui-node/imgui_node_editor_internal.h"
 
+#include "HubComponent/HubComponent.h"
+
+
+std::vector<std::string> GetAllDlls(const std::string& directory) {
+    std::vector<std::string> dlls;
+    WIN32_FIND_DATAA findFileData;
+    HANDLE hFind = FindFirstFileA((directory + "\\*.dll").c_str(), &findFileData);
+
+    if (hFind == INVALID_HANDLE_VALUE) {
+        std::cerr << "No DLLs found in directory: " << directory << std::endl;
+        return dlls;
+    }
+
+    do {
+        dlls.push_back(directory + "\\" + findFileData.cFileName);
+    } while (FindNextFileA(hFind, &findFileData) != 0);
+
+    FindClose(hFind);
+    return dlls;
+}
 
 namespace ed = ax::NodeEditor;
 void RenderMainDockSpace()
@@ -44,6 +64,47 @@ void RenderMainDockSpace()
 
 HubInterface::HubInterface()
 {    
+
+    std::string dllDirectory = "C:\\path\\to\\your\\dlls";
+
+    // Get all DLL paths in directory
+    std::vector<std::string> dllPaths = GetAllDlls(dllDirectory);
+    std::vector<HMODULE> loadedModules;
+
+    for (const auto& path : dllPaths) 
+    {
+        HMODULE hMod = LoadLibraryA(path.c_str());
+        if (hMod) 
+        {
+            std::cout << "Loaded DLL: " << path << std::endl;
+            loadedModules.push_back(hMod);
+
+            using CreateComponentFunc = GenericComponent* (*)();
+            CreateComponentFunc createFunc = (CreateComponentFunc)GetProcAddress(hMod, "CreateComponent");
+            if (createFunc) 
+            {
+                std::cout << "Found CreateComponent in " << path << std::endl;
+                component.push_back(createFunc());
+            } 
+            else 
+            {
+                std::cout << "No CreateComponent found in " << path << std::endl;
+            }
+        } 
+        else 
+        {
+            std::cerr << "Failed to load DLL: " << path << " Error: " << GetLastError() << std::endl;
+        }
+    }
+
+    // Unload all loaded DLLs
+    for (HMODULE mod : loadedModules) 
+    {
+        FreeLibrary(mod);
+    }
+
+
+
 
     glfwInit();
     window = glfwCreateWindow(1280, 720, "PulseHub", nullptr, nullptr);
@@ -194,8 +255,17 @@ void HubInterface::Render()
         ImGui::Text("Applications");
         ImGui::Separator();
 
-        if (ImGui::Button("Pulse Forge", ImVec2(-1, 0))) { /* choix app */ }
-        if (ImGui::Button("Settings", ImVec2(-1, 0))) { /* choix app */ }
+        // if (ImGui::Button("Pulse Forge", ImVec2(-1, 0))) { system("D:/PulseSoftware/PulseForge/PulseEngine/Build/PulseEditor.exe D:/PulseSoftware/ForgeProject"); }
+        // if (ImGui::Button("Settings", ImVec2(-1, 0))) { /* choix app */ }
+
+
+        for(GenericComponent* comp : component)
+        {
+            if(comp->RenderButton())
+            {
+                selectedComponent = comp;
+            }
+        }
 
         ImGui::EndChild();
 
@@ -204,7 +274,9 @@ void HubInterface::Render()
 
         // Panel central (remplit le reste)
         ImGui::BeginChild("MainPanel", ImVec2(0, avail.y), true);
-        // Contenu central vide pour l’instant
+
+        selectedComponent->RenderMainPage();
+
         ImGui::EndChild();
 
         ImGui::End();
